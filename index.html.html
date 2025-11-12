@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Balloon Number Shooter — Improved Input</title>
+  <style>
+    :root{--bg:#0b1220;--panel:#0f1724;--accent:#7dd3fc}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial}
+    body{display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#071023 0%, #0b1220 100%);color:#e6eef8}
+    .wrap{width:980px;max-width:96vw;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));box-shadow:0 10px 30px rgba(2,6,23,0.6);border-radius:12px;overflow:hidden}
+    header{display:flex;align-items:center;gap:12px;padding:12px 16px;background:rgba(255,255,255,0.02);flex-wrap:wrap}
+    header h1{font-size:18px;margin:0;font-weight:600}
+    .controls{display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap}
+    .controls input[type=text], .controls input[type=number], .controls select {
+      padding:6px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);
+      background:transparent;color:inherit;font-size:14px;
+    }
+    .controls input[type=text]{width:220px}
+    .controls input[type=number]{width:80px}
+    .controls button{
+      padding:8px 12px;border-radius:8px;border:none;
+      background:var(--accent);color:#042028;font-weight:700;cursor:pointer;
+    }
+    .controls button:hover{opacity:0.9}
+    .balloon-list{font-size:14px;color:#cde;display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+    .balloon-tag{background:rgba(255,255,255,0.08);padding:4px 8px;border-radius:6px;}
+    .board-wrap{display:flex;gap:12px;padding:12px}
+    .stage{background:linear-gradient(180deg,#132033,#071021);border-radius:8px;padding:8px;flex:1;display:flex;flex-direction:column;align-items:center}
+    canvas{background:transparent;border-radius:6px;display:block}
+    .side{width:220px;min-width:210px;background:linear-gradient(180deg, #0b1220,#08111a);border-radius:8px;padding:12px;box-sizing:border-box}
+    .panel{background:rgba(255,255,255,0.02);padding:10px;border-radius:8px}
+    .row{display:flex;justify-content:space-between;margin-bottom:8px}
+    .muted{opacity:0.7;font-size:13px}
+    .big{font-size:20px;font-weight:700}
+    footer{padding:10px 16px;font-size:13px;color:#9fb0c6;background:linear-gradient(180deg, rgba(255,255,255,0.01), transparent)}
+    .hint{font-size:13px;color:#bcd7ea}
+    @media (max-width:760px){.board-wrap{flex-direction:column}.side{width:100%}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Balloon Number Shooter</h1>
+      <div class="controls">
+        <input id="numInput" type="number" min="1" placeholder="Number" />
+        <select id="colorInput">
+          <option value="">Random Color</option>
+          <option value="red">Red</option>
+          <option value="blue">Blue</option>
+          <option value="green">Green</option>
+          <option value="orange">Orange</option>
+          <option value="purple">Purple</option>
+          <option value="yellow">Yellow</option>
+        </select>
+        <button id="addBtn">+ Add Balloon</button>
+        <button id="startBtn">Start</button>
+        <button id="resetBtn">Reset</button>
+      </div>
+      <div id="balloonList" class="balloon-list"></div>
+    </header>
+
+    <div class="board-wrap">
+      <div class="stage">
+        <canvas id="game" width="720" height="520"></canvas>
+        <div class="hint">Move mouse / touch to aim. Click or press SPACE to shoot.</div>
+      </div>
+
+      <div class="side">
+        <div class="panel" style="margin-bottom:10px">
+          <div class="row"><div class="muted">Balloons left</div><div id="leftCount" class="big">0</div></div>
+          <div class="row"><div class="muted">Score (sum of popped numbers)</div><div id="score" class="big">0</div></div>
+        </div>
+
+        <div class="panel">
+          <div class="muted">Controls</div>
+          <ul>
+            <li>Add balloons using number + color</li>
+            <li>Click “Start” to play</li>
+            <li>Move mouse / touch to aim</li>
+            <li>Click or SPACE to shoot</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <footer>Improved version — simple visual balloon shooter with interactive inputs.</footer>
+  </div>
+
+  <script>
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const startBtn = document.getElementById('startBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const addBtn = document.getElementById('addBtn');
+  const numInput = document.getElementById('numInput');
+  const colorInput = document.getElementById('colorInput');
+  const balloonList = document.getElementById('balloonList');
+  const leftCountElem = document.getElementById('leftCount');
+  const scoreElem = document.getElementById('score');
+
+  const W = canvas.width; const H = canvas.height;
+
+  let balloons = [], bullets = [], flashTexts = [], listData = [];
+  let shooter = {x: W/2, y: H-28, w:46, h:16};
+  let running=false, score = 0;
+
+  // Helpers
+  function rand(min,max){return Math.random()*(max-min)+min}
+  function pickColor(name){
+    const named = {red:'#ff5c7c',blue:'#5cc3ff',green:'#67ffb0',orange:'#ffb86b',purple:'#c58cff',yellow:'#ffef7a'};
+    if(!name) return Object.values(named)[Math.floor(Math.random()*Object.keys(named).length)];
+    return named[name.toLowerCase()]||name;
+  }
+
+  function updateBalloonList(){
+    balloonList.innerHTML = listData.map(b=>`<span class='balloon-tag' style='color:${b.color}'>${b.value}</span>`).join('');
+  }
+
+  function addBalloon(){
+    const n = Number(numInput.value);
+    if(!n){alert('Enter a valid number');return;}
+    listData.push({value:n, color:pickColor(colorInput.value)});
+    numInput.value = '';
+    colorInput.value = '';
+    updateBalloonList();
+  }
+
+  function createBalloons(){
+    balloons = [];
+    const gap = Math.max(30, Math.floor(W / Math.max(1,listData.length)));
+    for(let i=0;i<listData.length;i++){
+      const item = listData[i];
+      const r = 26 + Math.min(10, Math.floor(Math.abs(item.value)%8));
+      const x = Math.min(W- r - 10, 20 + i*gap + rand(-gap*0.3,gap*0.3));
+      const y = H + rand(20, 140) + i*18;
+      const speed = rand(0.4, 1.0) + Math.min(0.8, item.value/50);
+      balloons.push({x,y,r, color:item.color, value:item.value, popped:false, vx:rand(-0.2,0.2), vy:-speed});
+    }
+    leftCountElem.textContent = balloons.length;
+  }
+
+  function resetGame(){
+    balloons=[]; bullets=[]; flashTexts=[]; score=0;
+    leftCountElem.textContent=0; scoreElem.textContent=0;
+    running=false; draw();
+  }
+
+  function startGame(){
+    if(listData.length===0){alert('Add at least one balloon first!');return;}
+    createBalloons();
+    score=0; scoreElem.textContent=0;
+    running=true;
+  }
+
+  // Gameplay
+  function shoot(){ if(!running) return; bullets.push({x:shooter.x, y:shooter.y-12, r:6, vy:-6}); }
+
+  function addFlash(x,y,text,color){ flashTexts.push({x,y,text,color,time:0,duration:700}); }
+
+  let last=0;
+  function loop(ts){
+    if(!last) last=ts;
+    const dt = Math.min(40, ts-last); last=ts;
+    update(dt/1000); draw();
+    requestAnimationFrame(loop);
+  }
+
+  function update(sec){
+    for(const b of balloons){ if(b.popped) continue; b.x+=b.vx; b.y+=b.vy; if(b.y<-50){b.vy*=-0.2; b.y=-50;} }
+    for(const bu of bullets) bu.y+=bu.vy;
+    bullets=bullets.filter(bu=>bu.y>-20);
+    for(const bu of bullets){
+      for(const bl of balloons){
+        if(bl.popped) continue;
+        const d2 = (bu.x-bl.x)**2+(bu.y-bl.y)**2;
+        if(d2 <= (bu.r+bl.r)**2){
+          bl.popped=true;
+          addFlash(bl.x,bl.y,String(bl.value),bl.color);
+          score+=bl.value; scoreElem.textContent=score;
+          leftCountElem.textContent=balloons.filter(b=>!b.popped).length;
+          bu.y=-9999;
+        }
+      }
+    }
+    bullets=bullets.filter(bu=>bu.y>-9000);
+    for(const f of flashTexts) f.time += sec*1000;
+    flashTexts=flashTexts.filter(f=>f.time<f.duration);
+    if(running && balloons.every(b=>b.popped)){ running=false; addFlash(W/2,H/2,'All popped! Score: '+score,'#fff'); }
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'rgba(255,255,255,0.02)'); g.addColorStop(1,'rgba(255,255,255,0.00)');
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    for(const b of balloons){
+      if(b.popped) continue;
+      ctx.beginPath(); ctx.ellipse(b.x,b.y,b.r,b.r*1.1,0,0,Math.PI*2);
+      ctx.fillStyle=b.color; ctx.fill();
+      ctx.fillStyle='#041726'; ctx.font=Math.floor(b.r*0.9)+'px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(b.value,b.x,b.y-2);
+    }
+    for(const bu of bullets){ ctx.beginPath(); ctx.arc(bu.x,bu.y,bu.r,0,Math.PI*2); ctx.fillStyle='#fff'; ctx.fill(); }
+    ctx.save(); ctx.translate(shooter.x,shooter.y);
+    ctx.fillStyle='#08232f'; ctx.fillRect(-shooter.w/2,-shooter.h/2,shooter.w,shooter.h);
+    ctx.restore();
+    for(const f of flashTexts){ const p=f.time/f.duration; const a=1-Math.pow(p,1.2); ctx.globalAlpha=a; ctx.font=Math.floor(28+(1-p)*36)+'px Arial'; ctx.textAlign='center'; ctx.fillStyle=f.color; ctx.fillText(f.text,f.x,f.y); ctx.globalAlpha=1; }
+  }
+
+  canvas.addEventListener('mousemove', e=>{const rect=canvas.getBoundingClientRect(); shooter.x=Math.min(W-10,Math.max(10,(e.clientX-rect.left)));});
+  canvas.addEventListener('click',()=>shoot());
+  document.addEventListener('keydown', e=>{ if(e.code==='Space'){ e.preventDefault(); shoot(); } });
+
+  startBtn.onclick=startGame;
+  resetBtn.onclick=resetGame;
+  addBtn.onclick=addBalloon;
+
+  draw(); requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
